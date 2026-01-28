@@ -7,82 +7,45 @@ on:
     branches: [ main ]
 
 jobs:
-  stage-1-checkout:
-    name: 1️⃣ Checkout Code
+  validate-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-  stage-2-validate-html:
-    name: 2️⃣ Validate HTML Syntax
-    runs-on: ubuntu-latest
-    needs: stage-1-checkout
-    steps:
-      - uses: actions/checkout@v3
+      # Debug (optional but useful)
+      - name: Show repository structure
+        run: ls -R
 
-      - name: Install HTML tidy tool
+      - name: Install HTML tidy
         run: sudo apt-get update && sudo apt-get install -y tidy
 
-      - name: Validate HTML files (if docs exists)
+      - name: Validate HTML (only if HTML exists)
         run: |
-          if [ -d "./docs" ]; then
-            echo "Validating HTML in docs/"
-            find ./docs -name '*.html' -exec tidy -qe {} \;
-          else
-            echo "No docs directory found. Skipping HTML validation."
-          fi
+          HTML_FILES=$(find . -name "*.html" || true)
 
-  stage-3-check-links:
-    name: 3️⃣ Check for Broken Links
-    runs-on: ubuntu-latest
-    needs: stage-2-validate-html
-    steps:
-      - uses: actions/checkout@v3
+          if [ -z "$HTML_FILES" ]; then
+            echo "No HTML files found. Skipping HTML validation."
+          else
+            echo "Validating HTML files..."
+            find . -name "*.html" -exec tidy -qe {} \;
+          fi
 
       - name: Install linkchecker
         run: sudo apt-get update && sudo apt-get install -y linkchecker
 
-      - name: Check links (if index.html exists)
+      - name: Check links (only if index.html exists)
         run: |
-          if [ -f "./docs/index.html" ]; then
-            linkchecker ./docs/index.html || true
+          if [ -f "./index.html" ]; then
+            linkchecker ./index.html || true
           else
             echo "No index.html found. Skipping link check."
           fi
 
-  stage-4-build-preview:
-    name: 4️⃣ Build Preview
-    runs-on: ubuntu-latest
-    needs: stage-3-check-links
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Archive site preview (if docs exists)
-        run: |
-          if [ -d "./docs" ]; then
-            zip -r site-preview.zip ./docs
-          else
-            echo "No docs directory to archive."
-          fi
-
-      - name: Upload preview artifact
-        if: exists('site-preview.zip')
-        uses: actions/upload-artifact@v4
-        with:
-          name: site-preview
-          path: site-preview.zip
-
-  stage-5-deploy:
-    name: 5️⃣ Deploy to GitHub Pages
-    runs-on: ubuntu-latest
-    needs: stage-4-build-preview
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Deploy site (if docs exists)
-        if: ${{ hashFiles('docs/**') != '' }}
+      - name: Deploy to GitHub Pages (only if HTML exists)
+        if: ${{ hashFiles('**/*.html') != '' }}
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          publish_dir: .
